@@ -1117,6 +1117,9 @@ export const pageStyles = String.raw`    :root {
     .chat-panel {
       display: flex;
       flex-direction: column;
+      width: min(100%, 920px);
+      min-width: min(680px, 100%);
+      max-width: 100%;
       height: calc(100svh - 280px);
       min-height: 400px;
       text-align: left;
@@ -1163,9 +1166,7 @@ export const pageStyles = String.raw`    :root {
       display: flex;
       flex-direction: column;
       gap: 4px;
-      width: fit-content;
-      min-width: min(280px, 88%);
-      max-width: min(88%, 720px);
+      max-width: 88%;
       animation: rise 200ms ease-out both;
     }
     .chat-msg-user {
@@ -1185,8 +1186,6 @@ export const pageStyles = String.raw`    :root {
       padding: 0 4px;
     }
     .chat-msg-text {
-      width: 100%;
-      box-sizing: border-box;
       padding: 10px 14px;
       border-radius: 14px;
       font-family: "JetBrains Mono", monospace;
@@ -1254,26 +1253,32 @@ export const pageStyles = String.raw`    :root {
     .chat-input:focus {
       outline: none;
     }
-    .chat-send {
+    .chat-send,
+    .chat-cancel {
       flex-shrink: 0;
-      width: 34px;
       height: 34px;
+      padding: 0 14px;
       border-radius: 999px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11px;
+      letter-spacing: 0.03em;
+      line-height: 1;
+      white-space: nowrap;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.16s ease, filter 0.16s ease, opacity 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+    }
+    .chat-send {
       border: 1px solid #3cb87980;
       background: linear-gradient(180deg, #1f6f47d4 0%, #18563ace 100%);
       color: #c8f8de;
-      font-size: 16px;
-      font-weight: 700;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.16s ease, filter 0.16s ease, opacity 0.16s ease;
-      line-height: 1;
+      font-weight: 600;
     }
     .chat-send:hover {
       transform: translateY(-1px);
-      filter: brightness(1.1);
+      filter: brightness(1.06);
     }
     .chat-send:disabled {
       opacity: 0.45;
@@ -1282,23 +1287,14 @@ export const pageStyles = String.raw`    :root {
       filter: none;
     }
     .chat-cancel {
-      flex-shrink: 0;
-      width: 34px;
-      height: 34px;
-      border-radius: 999px;
       border: 1px solid #ff7f7f55;
       background: #34181855;
       color: #ff9b9b;
-      font-size: 14px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      transition: transform 0.16s ease, background 0.16s ease;
     }
     .chat-cancel:hover {
       transform: translateY(-1px);
       background: #4d191970;
+      border-color: #ff9b9b66;
     }
     .chat-msg-elapsed {
       font-family: "JetBrains Mono", monospace;
