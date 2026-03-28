@@ -336,7 +336,14 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const logFile = join(LOGS_DIR, `${name}-${timestamp}.log`);
 
-  const { security, model, api, fallback, agentic } = getSettings();
+  // Log usage pattern for self-evolution
+  try {
+    const { logUsage } = await import("./patterns");
+    await logUsage(prompt, name);
+  } catch {}
+
+  const settings = getSettings();
+  const { security, model, api, fallback, agentic } = settings;
 
   // Determine which model to use based on agentic routing
   let primaryConfig: ModelConfig;
@@ -383,6 +390,25 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     "You are running inside ClaudeClaw.",
   ];
   if (promptContent) appendParts.push(promptContent);
+
+  // Inject persistent memory (smart relevance filtering)
+  const { buildSmartContext } = await import("./memory");
+  const memoryCtx = await buildSmartContext(prompt, 10);
+  if (memoryCtx) appendParts.push(memoryCtx);
+
+  // Inject available tools context
+  try {
+    const { buildToolsContext } = await import("./tools");
+    const toolsCtx = await buildToolsContext();
+    if (toolsCtx) appendParts.push(toolsCtx);
+  } catch {}
+
+  // Inject lessons from past mistakes
+  try {
+    const { buildLessonsContext } = await import("./lessons");
+    const lessonsCtx = await buildLessonsContext(prompt, 8);
+    if (lessonsCtx) appendParts.push(lessonsCtx);
+  } catch {}
 
   // Load the project's CLAUDE.md if it exists
   if (existsSync(PROJECT_CLAUDE_MD)) {
@@ -438,6 +464,69 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
     } catch (e) {
       console.error(`[${new Date().toLocaleTimeString()}] Failed to parse session from Claude output:`, e);
     }
+  }
+
+  // Auto-save [remember: ...] directives from Claude output
+  if (exitCode === 0 && stdout) {
+    const rememberPattern = /\[remember:\s*(.+?)\]/g;
+    let rememberMatch;
+    while ((rememberMatch = rememberPattern.exec(stdout)) !== null) {
+      const memContent = rememberMatch[1].trim();
+      if (memContent) {
+        try {
+          const { saveMemory: saveMem } = await import("./memory");
+          const memKey = "auto_" + Date.now().toString(36);
+          await saveMem(memKey, memContent);
+          console.log(`[${new Date().toLocaleTimeString()}] 自动保存记忆: ${memKey}`);
+        } catch (e) {
+          console.error(`[${new Date().toLocaleTimeString()}] 保存记忆失败:`, e);
+        }
+      }
+    }
+  }
+
+  // Auto-extract memories from successful responses
+  if (exitCode === 0 && stdout.length > 100) {
+    try {
+      const { saveMemory, getMemory } = await import("./memory");
+
+      // Extract key decisions, facts, and preferences
+      const extractPatterns = [
+        // User preferences detected
+        { pattern: /(?:用户|你)(?:喜欢|偏好|想要|需要|要求)\s*(.{10,80})/g, category: "preference" },
+        // Decisions made
+        { pattern: /(?:决定|选择了|确定|采用)\s*(.{10,80})/g, category: "decision" },
+        // Important facts
+        { pattern: /(?:注意|重要|记住|关键)\s*[:：]\s*(.{10,80})/g, category: "fact" },
+        // Technical choices
+        { pattern: /(?:使用|安装了|配置了|设置了)\s+(\S+)\s+(?:作为|来|用于)\s*(.{5,60})/g, category: "tech" },
+      ];
+
+      for (const { pattern, category } of extractPatterns) {
+        let m;
+        while ((m = pattern.exec(stdout)) !== null) {
+          const content = (m[1] + (m[2] || "")).trim();
+          if (content.length >= 10) {
+            const key = `auto_${category}_${Date.now().toString(36)}`;
+            // Don't save duplicates - check if similar content exists
+            const existing = await getMemory(key);
+            if (!existing) {
+              await saveMemory(key, `[${category}] ${content}`);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Auto-save conversation summary for long responses (>500 chars)
+  if (exitCode === 0 && stdout.length > 500 && name !== "heartbeat") {
+    try {
+      const { saveMemory } = await import("./memory");
+      const summary = stdout.slice(0, 200).replace(/\n/g, " ").trim();
+      const key = `session_${new Date().toISOString().slice(0,10)}_${Date.now().toString(36)}`;
+      await saveMemory(key, `[会话摘要] ${name}: ${summary}...`);
+    } catch {}
   }
 
   const result: RunResult = {
@@ -526,6 +615,12 @@ async function streamClaude(
 ): Promise<void> {
   await mkdir(LOGS_DIR, { recursive: true });
 
+  // Log usage pattern for self-evolution
+  try {
+    const { logUsage } = await import("./patterns");
+    await logUsage(prompt, name);
+  } catch {}
+
   const existing = await getSession();
   const { security, model, api } = getSettings();
   const securityArgs = buildSecurityArgs(security);
@@ -540,6 +635,25 @@ async function streamClaude(
   const promptContent = await loadPrompts();
   const appendParts: string[] = ["You are running inside ClaudeClaw."];
   if (promptContent) appendParts.push(promptContent);
+
+  // Inject persistent memory (smart relevance filtering)
+  const { buildSmartContext: buildSmartCtx } = await import("./memory");
+  const memCtx = await buildSmartCtx(prompt, 10);
+  if (memCtx) appendParts.push(memCtx);
+
+  // Inject available tools context
+  try {
+    const { buildToolsContext: buildToolsCtx } = await import("./tools");
+    const toolsCtx = await buildToolsCtx();
+    if (toolsCtx) appendParts.push(toolsCtx);
+  } catch {}
+
+  // Inject lessons from past mistakes
+  try {
+    const { buildLessonsContext: buildLessonsCtx } = await import("./lessons");
+    const lessonsCtx = await buildLessonsCtx(prompt, 8);
+    if (lessonsCtx) appendParts.push(lessonsCtx);
+  } catch {}
 
   if (existsSync(PROJECT_CLAUDE_MD)) {
     try {

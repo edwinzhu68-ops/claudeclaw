@@ -200,6 +200,22 @@ Configure web UI bind address or port.
 3. Set `web.port` (number) or `web.host` (string) accordingly.
 4. Write and confirm.
 
+### `pair <code>` / `pair`
+
+Verify a Telegram DM pairing code to authorize a new user.
+
+1. If code is in `$ARGUMENTS`, use it directly.
+2. Otherwise, use **AskUserQuestion**: "请输入 Telegram 发送的 6 位配对码" (header: "配对码", options: let user type via Other)
+3. Send a POST request to the local web UI at `http://127.0.0.1:4632/api/pairing/verify` with body `{ "code": "<code>" }`.
+   - Read `.claude/claudeclaw/settings.json` to get the `web.port` (default 4632) and `web.host` (default 127.0.0.1).
+   - Use `fetch()` to call the API.
+4. If the response contains `ok: true`:
+   - Show: "✅ 配对成功！用户 {username} (ID: {userId}) 已添加到允许列表。"
+   - Note: Settings are auto-reloaded by the daemon within 30 seconds.
+5. If the response contains `ok: false`:
+   - Show: "❌ 配对失败: {error}"
+   - Suggest the user try sending a new message to the Telegram bot to get a fresh code.
+
 ### `reset`
 
 Reset all settings to defaults.

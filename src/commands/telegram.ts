@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { transcribeAudioToText } from "../whisper";
 import { resolveSkillPrompt, listSkills } from "../skills";
+import { createPairing } from "../pairing";
 import { mkdir } from "node:fs/promises";
 import { extname, join } from "node:path";
 
@@ -170,6 +171,9 @@ interface TelegramMe {
 interface TelegramFile {
   file_path?: string;
 }
+
+// Track last response per chat for correction detection
+const lastResponseByChat: Map<number, string> = new Map();
 
 let telegramDebug = false;
 
@@ -594,7 +598,13 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
 
   if (userId && config.allowedUserIds.length > 0 && !config.allowedUserIds.includes(userId)) {
     if (isPrivate) {
-      await sendMessage(config.token, chatId, "Unauthorized.");
+      const username = message.from?.username ?? message.from?.first_name ?? String(userId);
+      const code = await createPairing(userId, username, chatId);
+      await sendMessage(
+        config.token,
+        chatId,
+        `🔐 需要验证身份\n\n配对码: \`${code}\`\n\n请在 Claude Code 中运行:\n\`/claudeclaw:config pair ${code}\`\n\n配对码 10 分钟内有效。`
+      );
     } else {
       console.log(`[Telegram] Ignored group message from unauthorized user ${userId} in chat ${chatId}`);
       debugLog(`Skip group message chat=${chatId} from=${userId} reason=unauthorized_user`);
@@ -729,6 +739,27 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
     }
   }
 
+  // Detect user corrections and save as lessons
+  try {
+    const { isCorrection, extractCorrection, saveLesson } = await import("../lessons");
+    const textContent = text || "";
+    if (isCorrection(textContent)) {
+      const lastResp = lastResponseByChat.get(chatId);
+      if (lastResp) {
+        const correction = extractCorrection(textContent, lastResp);
+        if (correction) {
+          await saveLesson({
+            category: "correction",
+            trigger: correction.trigger,
+            lesson: correction.lesson,
+            context: "telegram",
+            confidence: 2,
+          });
+        }
+      }
+    }
+  } catch {}
+
   const label = message.from?.username ?? String(userId ?? "unknown");
   const mediaParts = [hasImage ? "image" : "", hasVoice ? "voice" : "", hasDocument ? "doc" : ""].filter(Boolean);
   const mediaSuffix = mediaParts.length > 0 ? ` [${mediaParts.join("+")}]` : "";
@@ -832,9 +863,15 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       );
     }
     const prefixedPrompt = promptParts.join("\n");
+
+    // Status reaction: processing
+    await sendReaction(config.token, chatId, message.message_id, "\ud83d\udc40").catch(() => {});
+
     const result = await runUserMessage("telegram", prefixedPrompt);
 
     if (result.exitCode !== 0) {
+      // Status reaction: error
+      await sendReaction(config.token, chatId, message.message_id, "\u274c").catch(() => {});
       await sendMessage(config.token, chatId, `Error (exit ${result.exitCode}): ${result.stderr || "Unknown error"}`, threadId);
     } else {
       const { cleanedText: afterReact, reactionEmoji } = extractReactionDirective(result.stdout || "");
@@ -858,8 +895,14 @@ async function handleMessage(message: TelegramMessage): Promise<void> {
       if (!cleanedText && filePaths.length === 0) {
         await sendMessage(config.token, chatId, "(empty response)", threadId);
       }
+      // Status reaction: done
+      await sendReaction(config.token, chatId, message.message_id, "\u2705").catch(() => {});
+      // Save response for correction detection
+      lastResponseByChat.set(chatId, (result.stdout || "").slice(0, 500));
     }
   } catch (err) {
+    // Status reaction: error
+    await sendReaction(config.token, chatId, message.message_id, "\u274c").catch(() => {});
     const errMsg = err instanceof Error ? err.message : String(err);
     console.error(`[Telegram] Error for ${label}: ${errMsg}`);
     await sendMessage(config.token, chatId, `Error: ${errMsg}`, threadId);

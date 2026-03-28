@@ -10,6 +10,7 @@ import { initConfig, loadSettings, reloadSettings, resolvePrompt, type Heartbeat
 import { getDayAndMinuteAtOffset } from "../timezone";
 import { startWebUi, type WebServerHandle } from "../web";
 import type { Job } from "../jobs";
+import { loadHealth, recordSuccess, recordFailure, markAlertSent } from "../job-health";
 
 const CLAUDE_DIR = join(process.cwd(), ".claude");
 const HEARTBEAT_DIR = join(CLAUDE_DIR, "claudeclaw");
@@ -310,7 +311,16 @@ export async function start(args: string[] = []) {
   await initConfig();
   const settings = await loadSettings();
   await ensureProjectClaudeMd();
+
+  // Prune old auto-memories on startup
+  try {
+    const { pruneOldMemories } = await import("../memory");
+    const pruned = await pruneOldMemories(30);
+    if (pruned > 0) console.log(`[${new Date().toLocaleTimeString()}] Pruned ${pruned} old memories`);
+  } catch {}
+
   const jobs = await loadJobs();
+  await loadHealth();
   const webEnabled = webFlag || webPortFlag !== null || settings.web.enabled;
   const webPort = webPortFlag ?? settings.web.port;
 
@@ -698,7 +708,44 @@ export async function start(args: string[] = []) {
       if (cronMatches(job.schedule, now, currentSettings.timezoneOffsetMinutes)) {
         resolvePrompt(job.prompt)
           .then((prompt) => run(job.name, prompt))
-          .then((r) => {
+          .then(async (r) => {
+            // Track job health
+            if (r.exitCode === 0) {
+              await recordSuccess(job.name);
+            } else {
+              // Learn from job failures
+              try {
+                const { saveLesson } = await import("../lessons");
+                await saveLesson({
+                  category: "error",
+                  trigger: `定时任务 "${job.name}" 失败 (exit ${r.exitCode})`,
+                  lesson: `错误信息: ${(r.stderr || r.stdout || "无输出").slice(0, 200)}`,
+                  context: `job:${job.name}`,
+                  confidence: 1,
+                });
+              } catch {}
+
+              const shouldAlert = await recordFailure(job.name, 3);
+              if (shouldAlert) {
+                const alertMsg = `\u26a0\ufe0f \u4efb\u52a1\u544a\u8b66\n\n\u4efb\u52a1 "${job.name}" \u5df2\u8fde\u7eed\u5931\u8d25 3 \u6b21\u3002\n\n\u6700\u8fd1\u9519\u8bef:\n${(r.stderr || r.stdout || "\u65e0\u8f93\u51fa").slice(0, 500)}`;
+                if (telegramSend && currentSettings.telegram.allowedUserIds.length > 0) {
+                  for (const userId of currentSettings.telegram.allowedUserIds) {
+                    telegramSend(userId, alertMsg).catch((err) =>
+                      console.error(`[Telegram] \u544a\u8b66\u53d1\u9001\u5931\u8d25 ${userId}: ${err}`)
+                    );
+                  }
+                }
+                if (discordSendToUser && currentSettings.discord.allowedUserIds.length > 0) {
+                  for (const userId of currentSettings.discord.allowedUserIds) {
+                    discordSendToUser(userId, alertMsg).catch((err) =>
+                      console.error(`[Discord] \u544a\u8b66\u53d1\u9001\u5931\u8d25 ${userId}: ${err}`)
+                    );
+                  }
+                }
+                await markAlertSent(job.name);
+              }
+            }
+
             if (job.notify === false) return;
             if (job.notify === "error" && r.exitCode === 0) return;
             forwardToTelegram(job.name, r);
