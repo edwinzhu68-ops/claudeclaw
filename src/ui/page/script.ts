@@ -946,6 +946,13 @@ export const pageScript = String.raw`    const $ = (id) => document.getElementBy
     const chatSend = $("chat-send");
     const chatNewBtn = $("chat-new-btn");
     const chatConvList = $("chat-conv-list");
+    const chatAttach = $("chat-attach");
+    const chatFileInput = $("chat-file-input");
+    const chatImagePreview = $("chat-image-preview");
+    const chatImagePreviewImg = $("chat-image-preview-img");
+    const chatImageRemove = $("chat-image-remove");
+    let pendingImagePath = null;
+    let pendingImageDataUrl = null;
 
     var CHAT_STORAGE_KEY = "claudeclaw.chat.history";
     var CHAT_MIGRATED_KEY = "claudeclaw.chat.migrated";
@@ -1181,6 +1188,16 @@ export const pageScript = String.raw`    const $ = (id) => document.getElementBy
       roleEl.textContent = msg.role === "user" ? "\u4f60" : "Claude";
       textEl.textContent = msg.text || "";
 
+      // Render image if present
+      var existingImg = msgEl.querySelector(".chat-msg-image");
+      if (msg.imageDataUrl && !existingImg) {
+        var img = document.createElement("img");
+        img.className = "chat-msg-image";
+        img.src = msg.imageDataUrl;
+        img.addEventListener("click", function() { window.open(img.src, "_blank"); });
+        textEl.after(img);
+      }
+
       var metaEl = msgEl.querySelector(".chat-msg-elapsed, .chat-msg-background");
       if (msg.streaming && chatBusy) {
         if (!metaEl || !metaEl.classList.contains("chat-msg-elapsed")) {
@@ -1266,11 +1283,20 @@ export const pageScript = String.raw`    const $ = (id) => document.getElementBy
         } catch (_) {}
       }
 
+      // Append image path to message if pending
+      var imageForMsg = pendingImagePath;
+      var imageDataUrl = pendingImageDataUrl;
+      var fullMessage = message;
+      if (imageForMsg) {
+        fullMessage = message + "\n\n[Image path: " + imageForMsg + "]\nThe user attached an image. Inspect this image file directly before answering.";
+      }
+      clearImagePreview();
+
       chatInput.value = "";
       autoResizeChatInput();
       setChatBusy(true);
 
-      chatHistory.push({ role: "user", text: message });
+      chatHistory.push({ role: "user", text: message, imageDataUrl: imageDataUrl || null });
       var assistantIdx = chatHistory.length;
       chatHistory.push({ role: "assistant", text: "", streaming: true });
       renderChatHistory();
@@ -1281,7 +1307,7 @@ export const pageScript = String.raw`    const $ = (id) => document.getElementBy
         var res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: message, conversationId: activeConvId || "" }),
+          body: JSON.stringify({ message: fullMessage, conversationId: activeConvId || "" }),
           signal: chatAbortController.signal,
         });
 
@@ -1365,6 +1391,105 @@ export const pageScript = String.raw`    const $ = (id) => document.getElementBy
     var chatCancelBtn = $("chat-cancel");
     if (chatCancelBtn) {
       chatCancelBtn.addEventListener("click", cancelChat);
+    }
+
+    // ── Image handling ──
+    function showImagePreview(dataUrl) {
+      pendingImageDataUrl = dataUrl;
+      if (chatImagePreviewImg) chatImagePreviewImg.src = dataUrl;
+      if (chatImagePreview) chatImagePreview.hidden = false;
+    }
+
+    function clearImagePreview() {
+      pendingImagePath = null;
+      pendingImageDataUrl = null;
+      if (chatImagePreviewImg) chatImagePreviewImg.src = "";
+      if (chatImagePreview) chatImagePreview.hidden = true;
+      if (chatFileInput) chatFileInput.value = "";
+    }
+
+    async function uploadImage(file) {
+      var formData = new FormData();
+      formData.append("image", file);
+      try {
+        var res = await fetch("/api/upload", { method: "POST", body: formData });
+        var data = await res.json();
+        if (data.ok) {
+          pendingImagePath = data.path;
+          return true;
+        }
+      } catch (_) {}
+      return false;
+    }
+
+    function handleImageFile(file) {
+      if (!file || !file.type.startsWith("image/")) return;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        showImagePreview(e.target.result);
+        uploadImage(file);
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // Attach button
+    if (chatAttach && chatFileInput) {
+      chatAttach.addEventListener("click", function() { chatFileInput.click(); });
+      chatFileInput.addEventListener("change", function() {
+        if (chatFileInput.files && chatFileInput.files[0]) {
+          handleImageFile(chatFileInput.files[0]);
+        }
+      });
+    }
+
+    // Remove preview
+    if (chatImageRemove) {
+      chatImageRemove.addEventListener("click", clearImagePreview);
+    }
+
+    // Paste image from clipboard
+    if (chatInput) {
+      chatInput.addEventListener("paste", function(e) {
+        var items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (var i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf("image") !== -1) {
+            e.preventDefault();
+            var file = items[i].getAsFile();
+            if (file) handleImageFile(file);
+            return;
+          }
+        }
+      });
+    }
+
+    // Drag and drop image
+    if (chatPanel) {
+      var dropOverlay = null;
+      chatPanel.addEventListener("dragover", function(e) {
+        e.preventDefault();
+        if (!dropOverlay) {
+          dropOverlay = document.createElement("div");
+          dropOverlay.className = "chat-drop-overlay";
+          dropOverlay.textContent = "\u62d6\u653e\u56fe\u7247\u5230\u8fd9\u91cc";
+          chatPanel.style.position = "relative";
+          chatPanel.appendChild(dropOverlay);
+        }
+      });
+      chatPanel.addEventListener("dragleave", function(e) {
+        if (dropOverlay && !chatPanel.contains(e.relatedTarget)) {
+          dropOverlay.remove();
+          dropOverlay = null;
+        }
+      });
+      chatPanel.addEventListener("drop", function(e) {
+        e.preventDefault();
+        if (dropOverlay) { dropOverlay.remove(); dropOverlay = null; }
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (files && files.length > 0) {
+          handleImageFile(files[0]);
+        }
+      });
     }
 
     // Update elapsed timer in-place every second (no full re-render = no blink).

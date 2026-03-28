@@ -1318,6 +1318,80 @@ export const pageStyles = String.raw`    :root {
       animation: caret 0.8s step-end infinite;
       margin-left: 2px;
     }
+    .chat-image-preview {
+      padding: 8px 12px;
+      border-bottom: 1px solid #ffffff12;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #080f1c44;
+    }
+    .chat-image-preview img {
+      max-height: 120px;
+      max-width: 200px;
+      border-radius: 8px;
+      border: 1px solid #ffffff22;
+      object-fit: contain;
+    }
+    .chat-image-remove {
+      background: #ff4a4a33;
+      border: 1px solid #ff4a4a55;
+      color: #ff7f7f;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      padding: 0;
+      flex-shrink: 0;
+    }
+    .chat-image-remove:hover {
+      background: #ff4a4a55;
+    }
+    .chat-attach {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      padding: 2px;
+      opacity: 0.5;
+      transition: opacity 160ms;
+      flex-shrink: 0;
+      line-height: 1;
+    }
+    .chat-attach:hover {
+      opacity: 1;
+    }
+    .chat-msg-image {
+      max-width: 280px;
+      max-height: 200px;
+      border-radius: 10px;
+      border: 1px solid #ffffff22;
+      margin-top: 6px;
+      object-fit: contain;
+      cursor: pointer;
+    }
+    .chat-msg-image:hover {
+      border-color: var(--accent);
+    }
+    .chat-drop-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10, 18, 32, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      color: var(--accent);
+      border: 2px dashed var(--accent);
+      border-radius: 16px;
+      z-index: 100;
+      pointer-events: none;
+    }
     .chat-input-area {
       flex-shrink: 0;
       padding: 10px 12px 12px;

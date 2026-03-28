@@ -180,6 +180,28 @@ export function startWebUi(opts: StartWebUiOptions): WebServerHandle {
         return json({ ok: true });
       }
 
+      // ── Image upload ──
+      if (url.pathname === "/api/upload" && req.method === "POST") {
+        try {
+          const formData = await req.formData();
+          const file = formData.get("image") as File | null;
+          if (!file) return json({ ok: false, error: "no image" });
+
+          const uploadsDir = require("path").join(process.cwd(), ".claude", "claudeclaw", "uploads");
+          await require("fs/promises").mkdir(uploadsDir, { recursive: true });
+
+          const ext = file.name?.split(".").pop() || "png";
+          const name = `img_${Date.now().toString(36)}.${ext}`;
+          const filePath = require("path").join(uploadsDir, name);
+          const buf = await file.arrayBuffer();
+          await Bun.write(filePath, buf);
+
+          return json({ ok: true, path: filePath, name });
+        } catch (err) {
+          return json({ ok: false, error: String(err) });
+        }
+      }
+
       // ── Chat (with conversation binding) ──
       if (url.pathname === "/api/chat" && req.method === "POST") {
         if (!opts.onChat) return json({ ok: false, error: "chat not configured" });

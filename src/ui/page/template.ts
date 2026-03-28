@@ -198,11 +198,17 @@ ${pageStyles}
         <div class="chat-main">
           <div id="chat-messages" class="chat-messages"></div>
           <div class="chat-input-area">
+            <div class="chat-image-preview" id="chat-image-preview" hidden>
+              <img id="chat-image-preview-img" />
+              <button class="chat-image-remove" id="chat-image-remove" type="button">\u00d7</button>
+            </div>
             <form id="chat-form" class="chat-form">
+              <input type="file" id="chat-file-input" accept="image/*" hidden />
+              <button class="chat-attach" id="chat-attach" type="button" title="\u6dfb\u52a0\u56fe\u7247">\ud83d\udcce</button>
               <textarea
                 id="chat-input"
                 class="chat-input"
-                placeholder="\u7ed9 Claude \u53d1\u6d88\u606f..."
+                placeholder="\u7ed9 Claude \u53d1\u6d88\u606f\uff0c\u53ef\u7c98\u8d34\u56fe\u7247..."
                 rows="1"
                 autocomplete="off"
               ></textarea>
