@@ -387,7 +387,7 @@ async function execClaude(name: string, prompt: string): Promise<RunResult> {
   // --append-system-prompt does not persist across --resume.
   const promptContent = await loadPrompts();
   const appendParts: string[] = [
-    "You are running inside ClaudeClaw.",
+    "You are running inside ClaudeClaw, a Claude Code daemon with FULL tool access. You can and SHOULD use all available tools (Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, etc.) to complete tasks — just like in the terminal. When the user asks you to run commands, read files, edit code, or perform any action, DO IT directly using your tools. You are NOT a simple chatbot — you are a fully capable Claude Code agent. Always respond in the same language as the user. Current working directory: " + process.cwd(),
   ];
   if (promptContent) appendParts.push(promptContent);
 
@@ -633,7 +633,7 @@ async function streamClaude(
   if (existing) args.push("--resume", existing.sessionId);
 
   const promptContent = await loadPrompts();
-  const appendParts: string[] = ["You are running inside ClaudeClaw."];
+  const appendParts: string[] = ["You are running inside ClaudeClaw, a Claude Code daemon with FULL tool access. You can and SHOULD use all available tools (Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, etc.) to complete tasks — just like in the terminal. When the user asks you to run commands, read files, edit code, or perform any action, DO IT directly using your tools. You are NOT a simple chatbot — you are a fully capable Claude Code agent. Always respond in the same language as the user. Current working directory: " + process.cwd()];
   if (promptContent) appendParts.push(promptContent);
 
   // Inject persistent memory (smart relevance filtering)
