@@ -728,12 +728,26 @@ async function streamClaude(
               textEmitted = true;
               hasActivity = true;
             } else if (block.type === "tool_use") {
+              // Show tool call to user
+              const toolName = block.name || "tool";
+              const toolInput = block.input ? JSON.stringify(block.input).slice(0, 200) : "";
+              onChunk(`\n\n\u{1F527} \u8C03\u7528\u5DE5\u5177: ${toolName}${toolInput ? "\n" + toolInput : ""}\n`);
               hasActivity = true;
             }
           }
           if (hasActivity) maybeUnblock();
         } else if (event.type === "tool_use") {
-          // Top-level tool_use event (some stream-json versions) — unblock the UI
+          // Top-level tool_use event (some stream-json versions) — show it
+          const toolName = (event as Record<string, unknown>).name as string || "tool";
+          onChunk(`\n\n\u{1F527} \u8C03\u7528\u5DE5\u5177: ${toolName}\n`);
+          maybeUnblock();
+        } else if (event.type === "tool_result") {
+          // Show tool result summary
+          const content = (event as Record<string, unknown>).content as string | undefined;
+          if (content) {
+            const preview = content.length > 300 ? content.slice(0, 300) + "..." : content;
+            onChunk(`\n\u2705 \u7ED3\u679C: ${preview}\n`);
+          }
           maybeUnblock();
         } else if (event.type === "result") {
           // Final result event — emit text as fallback if no assistant text was seen
